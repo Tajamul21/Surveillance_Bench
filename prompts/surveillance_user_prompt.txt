@@ -1,0 +1,62 @@
+Generate one new GTA-style JSON sample for this surveillance video.
+
+You are given three inputs:
+
+1) GTA JSON examples. Match their JSON structure and dialog style, but do not copy their content.
+<GTA_EXAMPLES_JSON>
+$GTA_EXAMPLES_JSON
+</GTA_EXAMPLES_JSON>
+
+2) Tool metadata. Use only these exact tool names and argument names. Copy the full metadata objects for tools used into the output "tools" list.
+<TOOL_METADATA_JSON>
+$TOOL_METADATA_JSON
+</TOOL_METADATA_JSON>
+
+3) Video frame manifest. The actual frame images are attached after this text, in this same chronological order. Use the exact "path" values in tool-call arguments and in the final "files" list.
+<FRAME_MANIFEST_JSON>
+$FRAME_MANIFEST_JSON
+</FRAME_MANIFEST_JSON>
+
+Return exactly this shape and no other top-level keys:
+{
+  "tools": [
+    {"name": "<tool name>", "description": "...", "inputs": [], "outputs": []}
+  ],
+  "files": [
+    {"type": "image", "path": "frames/video_name/keyframe_001.jpg", "url": ""}
+  ],
+  "dialogs": [
+    {"role": "user", "content": "<one surveillance question>"},
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "<tool name>",
+            "arguments": {"image": "frames/video_name/keyframe_001.jpg"}
+          }
+        }
+      ],
+      "thought": "<why this tool call is needed>"
+    },
+    {
+      "role": "tool",
+      "name": "<tool name>",
+      "content": {"type": "text", "content": "<realistic tool output grounded in the frame>"}
+    },
+    {"role": "assistant", "content": "<final concise answer>"}
+  ],
+  "gt_answer": {
+    "whitelist": [["<final concise answer>"]],
+    "blacklist": null
+  }
+}
+
+Quality checklist before returning:
+- The question is surveillance-only and grounded in this clip.
+- The trajectory uses at least two frames.
+- Every image path in tool-call arguments exists in the frame manifest.
+- Every tool name exists in the tool metadata.
+- The final answer is supported by the tool outputs.
+- The JSON can be parsed by json.loads.

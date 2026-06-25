@@ -650,13 +650,15 @@ def extract_keyframes(args: argparse.Namespace) -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Extract a compact set of representative keyframes from a video. "
+            "Extract a compact set of representative keyframes from one video or all videos in a folder. "
             "The method combines adaptive scene-change detection, coverage-aware chunking, "
             "quality scoring, and near-duplicate removal."
         )
     )
-    parser.add_argument("video", help="Path to input video")
-    parser.add_argument("-o", "--output", help="Output folder (default: <video_stem>_keyframes next to the video)")
+    parser.add_argument("video", nargs="?", help="Path to one input video. If omitted, all videos in --videos-dir are processed.")
+    parser.add_argument("-o", "--output", help="Output folder for one video. In folder mode, each video is written under --output-root/<video_stem>.")
+    parser.add_argument("--videos-dir", default="videos", help="Folder of raw videos for folder mode (default: videos)")
+    parser.add_argument("--output-root", default="frames", help="Root output folder for folder mode (default: frames)")
     parser.add_argument("--sample-fps", type=positive_float, default=2.0, help="Low-rate scan FPS used for analysis (default: 2.0)")
     parser.add_argument("--thumb-max-side", type=nonnegative_int, default=256, help="Thumbnail max side during analysis (default: 256)")
     parser.add_argument("--min-scene-sec", type=positive_float, default=1.2, help="Minimum time between scene cuts (default: 1.2)")
@@ -664,10 +666,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--static-max-gap-sec", type=positive_float, default=60.0, help="Max gap inside static scenes before forcing another frame (default: 60.0)")
     parser.add_argument("--target-seconds-per-frame", type=positive_float, default=2.0, help="Auto-budget target spacing between output frames (default: 2.0)")
     parser.add_argument("--max-auto-frames", type=nonnegative_int, default=100, help="Upper bound when max-frames is auto (default: 100)")
-    parser.add_argument("--max-frames", type=nonnegative_int, default=0, help="Hard cap on output frames; 0 means auto (default: 0)")
-    parser.add_argument("--min-output-gap-sec", type=positive_float, default=2.0, help="Only dedupe frames close in time within this gap (default: 2.0)")
-    parser.add_argument("--phash-threshold", type=nonnegative_int, default=4, help="Max pHash Hamming distance to treat nearby frames as duplicates (default: 8)")
-    parser.add_argument("--hist-threshold", type=positive_float, default=0.03, help="Max histogram distance to treat nearby frames as duplicates (default: 0.03)")
+    parser.add_argument("--max-frames", type=nonnegative_int, default=80, help="Hard cap on output frames; 0 means auto (default: 80)")
+    parser.add_argument("--min-output-gap-sec", type=positive_float, default=0.5, help="Only dedupe frames close in time within this gap (default: 0.5)")
+    parser.add_argument("--phash-threshold", type=nonnegative_int, default=12, help="Max pHash Hamming distance to treat nearby frames as duplicates (default: 12)")
+    parser.add_argument("--hist-threshold", type=positive_float, default=0.12, help="Max histogram distance to treat nearby frames as duplicates (default: 0.12)")
     parser.add_argument("--max-dimension", type=nonnegative_int, default=1600, help="Resize saved JPGs so the longest side is at most this value; 0 keeps original size (default: 1600)")
     parser.add_argument("--jpeg-quality", type=nonnegative_int, default=92, help="JPEG quality for saved keyframes (default: 92)")
     parser.add_argument("--contact-sheet", action="store_true", help="Also create a contact sheet image")
@@ -675,47 +677,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--contact-columns", type=nonnegative_int, default=4, help="Number of columns in contact sheet (default: 4)")
     return parser.parse_args()
 
-# changed the main
+
+def find_video_files(videos_dir: Path) -> list[Path]:
+    exts = ("*.mp4", "*.avi", "*.mov", "*.mkv")
+    files: list[Path] = []
+    for pattern in exts:
+        files.extend(videos_dir.glob(pattern))
+        files.extend(videos_dir.glob(pattern.upper()))
+    return sorted(set(files), key=lambda p: p.name)
+
 
 def main() -> None:
-    videos_dir = Path("videos")
-    output_root = Path("frames")
+    args = parse_args()
+
+    if args.video:
+        out = extract_keyframes(args)
+        print("Saved to:", out)
+        return
+
+    videos_dir = Path(args.videos_dir)
+    output_root = Path(args.output_root)
 
     if not videos_dir.exists():
-        raise FileNotFoundError("videos folder not found")
+        raise FileNotFoundError(f"videos folder not found: {videos_dir}")
 
-    video_files = sorted(videos_dir.glob("*.mp4"))
-
+    video_files = find_video_files(videos_dir)
     if not video_files:
-        raise RuntimeError("No .mp4 files found")
+        raise RuntimeError(f"No video files found in {videos_dir}")
 
     for video_path in video_files:
         print("Processing:", video_path.name)
-
-        class Args:
-            video = str(video_path)
-            output = str(output_root / video_path.stem)
-            sample_fps = 8.0
-            thumb_max_side = 256
-            min_scene_sec = 1.2
-            dynamic_max_gap_sec = 3.0
-            static_max_gap_sec = 20.0
-            target_seconds_per_frame = 1.0
-            max_auto_frames = 100
-            max_frames = 80
-            min_output_gap_sec = 0.5
-            phash_threshold = 12
-            hist_threshold = 0.12
-            max_dimension = 1600
-            jpeg_quality = 92
-            contact_sheet = False
-            contact_thumb_size = 320
-            contact_columns = 4
-
-        out = extract_keyframes(Args)
+        item_args = argparse.Namespace(**vars(args))
+        item_args.video = str(video_path)
+        item_args.output = str(output_root / video_path.stem)
+        out = extract_keyframes(item_args)
         print("Saved to:", out)
 
 
 if __name__ == "__main__":
     main()
-
